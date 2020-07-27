@@ -11,15 +11,16 @@ from multiprocessing import Process, Queue
 from signal import signal, SIGPIPE, SIG_DFL
 
 def _storage_process(storage_queue, output_folder):
-    """a function to process a queue output all content to a sqlite database"""
+    """a function to process a queue and output all content to a sqlite database"""
+
     # create and setup a new sqlite database on disk
     db_path = f'{output_folder}{os.sep}certstream-database.sqlite'
     db_connection = sqlite3.connect(db_path)
-    db_cursor = db_connection.cursor()
-    db_cursor.execute('CREATE TABLE IF NOT EXISTS certificate_information (provider text, common_name text, domains text, timestamp text)')
-    db_connection.commit()
 
-    logging.debug('the storage process is using the database at %s' % db_path)
+    with db_connection:
+        db_connection.execute('CREATE TABLE IF NOT EXISTS certificate_information (provider text, common_name text, domains text, timestamp text)')
+
+    logging.debug('using database at %s' % db_path)
 
     # process the storage queue forever
     while True:
@@ -27,13 +28,13 @@ def _storage_process(storage_queue, output_folder):
         (cert_provider, cert_cn, cert_domains) = storage_queue.get()
 
         # check if a certificate has been seen before
-        db_cursor.execute('SELECT timestamp FROM certificate_information WHERE provider = ? AND common_name = ? AND domains = ?', (cert_provider,cert_cn,cert_domains))
+        db_cursor = db_connection.execute('SELECT timestamp FROM certificate_information WHERE provider = ? AND common_name = ? AND domains = ?', (cert_provider,cert_cn,cert_domains))
         record_exists = db_cursor.fetchone()
 
         # add unknown certificates to the database
         if record_exists is None:
-            db_cursor.execute('INSERT INTO certificate_information VALUES(?,?,?,?)', (cert_provider,cert_cn,cert_domains,time.time()))
-            db_connection.commit()
+            with db_connection:
+                db_connection.execute('INSERT INTO certificate_information VALUES(?,?,?,?)', (cert_provider,cert_cn,cert_domains,time.time()))
         # ignore previously discovered certificates
         else:
             logging.debug('Seen domain [%s] before, diregarding it' % cert_cn)
@@ -97,14 +98,14 @@ def main():
         storage_queue = Queue()
         storage_process = Process(target=_storage_process, daemon=True, args=(storage_queue,cli_args.output_directory))
         storage_process.start()
-        logging.info('starting storage process with PID %s', storage_process.pid)
+        logging.info('starting storage process with pid %s', storage_process.pid)
 
     # monitor process
     if cli_args.monitor_stream:
         monitor_queue = Queue()
         monitor_process = Process(target=_monitor_process, daemon=True, args=(monitor_queue,cli_args.output_directory,cli_args.monitor_regex))
         monitor_process.start()
-        logging.info('starting monitor process with PID %s', monitor_process.pid)
+        logging.info('starting monitor process with pid %s', monitor_process.pid)
 
     # certstream callback
     certstream.listen_for_events(_process_certificate, cli_args.url, skip_heartbeats=True)
