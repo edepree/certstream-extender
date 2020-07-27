@@ -8,6 +8,8 @@ The project is Python3 native and the only dependency is the certstream-python l
 # Future State
 This script is a quick implementation but ideas for extending it include:
 * Outputting more certificate details to disk
-* Deduplicating certificate information stored on disk
+* ~~Deduplicating certificate information stored on disk~~
 * Rolling output file based on time (e.g. one day)
-* Outputting certificates into a database (e.g. SQLite)
+* ~~Outputting certificates into a database (e.g. SQLite)~~
+* Perform benchmarking to understand if anything is being lost when writing to disk
+* Linting, PEP8 compliance, etc.
